@@ -1,18 +1,11 @@
-export default async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
+exports.handler = async (event) => {
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, body: "Method Not Allowed" };
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return new Response("Server configuration error", { status: 500 });
-  }
-
-  let body;
-  try {
-    body = await req.text();
-  } catch {
-    return new Response("Bad Request", { status: 400 });
+    return { statusCode: 500, body: "Server configuration error" };
   }
 
   const upstream = await fetch("https://api.anthropic.com/v1/messages", {
@@ -22,14 +15,13 @@ export default async (req) => {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body,
+    body: event.body,
   });
 
   const data = await upstream.text();
-  return new Response(data, {
-    status: upstream.status,
+  return {
+    statusCode: upstream.status,
     headers: { "Content-Type": "application/json" },
-  });
+    body: data,
+  };
 };
-
-export const config = { path: "/api/anthropic-proxy" };
