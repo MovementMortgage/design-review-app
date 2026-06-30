@@ -1,106 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const SYSTEM_PROMPT = `You are a senior brand and design reviewer for Movement Mortgage, a national mortgage company. Your role is to give structured, constructive, educational feedback to field marketing staff on design submissions — helping them grow their design skills and catch issues before designs reach the corporate design team.
-
-MOVEMENT MORTGAGE BRAND GUIDELINES
-
-COLORS:
-- Brand Red (for all designs): #ED0707 — use for all red elements EXCEPT the MM logo mark itself
-- Logo Red: #C7202F — used ONLY for the circular MM logo mark
-- Near Black: #1A1A1A
-- Body Copy Gray: #515151
-- Mid Gray: #9e9e9e — legal/footer only
-- Light Gray: #d3d3d3 — legal/footer only
-- Gold/Yellow: accent use only, used sparingly
-- Off-white/cream: accent use only
-- Recommendation: for all design red (not logo), prefer #ED0707 as it feels more modern and elevated than darker reds
-
-TYPOGRAPHY:
-- Primary: Gotham (Book, Medium, Bold, Black, Ultra) — free alt: Montserrat
-- Secondary: Knockout (weights 26–30, 46–50, 54, 74, 94) — free alt: Antonio
-  - Knockout Sumo, Ultimate Sumo, Full Sumo: letter-spacing -50
-  - All other Knockout weights: letter-spacing -20
-- No unapproved fonts
-- Font sizes in whole or half-point increments only
-- Strong hierarchy required: headline → subheadline → body copy clearly differentiated
-
-LOGO RULES:
-- Logo must always remain proportionate — never stretch or distort
-- Clear space around logo = height/width of the circular MM emblem
-- Logo must remain legible on any background
-- Social media default: use MM outline emblem (mm-mark-outline-logo)
-- Texas-specific content: use split-mm-logo_NEW
-- Social graphics MUST include all three: Movement Mortgage logo + EHO logo + NMLS logo
-- EHO and NMLS logos must always appear together as a pair
-
-LAYOUT & COMPOSITION:
-- No full red backgrounds unless explicitly approved
-- Whitespace must be intentional — avoid both overcrowding and excessive empty space
-- All text must be legible over images — adjust contrast, sizing, placement
-- Consistent alignment throughout
-- If a Loan Officer is featured, they are the dominant focal point
-- Text hierarchy must guide the eye clearly
-
-PHOTOGRAPHY:
-- Real people, real moments — no overly posed stock imagery
-- Natural light, deeper blacks/whiter whites
-- Diversity, movement, emotion, tight crops
-- No generic stock photo feel
-
-ICONS & ILLUSTRATION:
-- Outlined icon style preferred
-- Enclosed in a circle as primary execution (not required if intentional)
-- Clean, modern, cohesive — never juvenile
-
-SOCIAL MEDIA SPECIFIC RULES (critical):
-- Minimal text — keep it concise and scannable
-- QR codes do NOT belong on social graphics (cannot be scanned from a screen in a feed)
-- Too much information overwhelms — prioritize one clear message
-- Required: MM logo + EHO logo + NMLS logo (EHO and NMLS always paired)
-- LO headshot should be prominent if LO is featured
-- No full red backgrounds
-
-STRATEGIC DESIGN PRINCIPLES:
-- Consider the medium — what works in print often fails digitally and vice versa
-- Information hierarchy: what does the viewer see first, second, third?
-- Is the call-to-action (CTA) clear and appropriately prominent?
-- Does the piece respect the viewer's attention span for this medium?
-- Does the design serve its purpose? (recruit, celebrate, promote, inform?)
-- Design should feel: Innovative, Aspirational, Energetic, Authentic, Bold, Fresh
-
-REVIEW DIMENSIONS — evaluate all 8:
-1. Clarity & Communication — message clear at a glance? Hierarchy logical?
-2. Brand Consistency — correct colors, fonts, logo usage, tone?
-3. Visual Balance & Composition — layout intentional, whitespace balanced?
-4. Typography — consistent, readable, correct fonts, weights, spacing?
-5. Color — on-brand, sufficient contrast, WCAG accessibility?
-6. Consistency & Attention to Detail — margins, spacing, no typos or placeholders?
-7. Purpose & Audience Fit — right for the medium and intended audience?
-8. Strategic Effectiveness — medium-appropriate? CTA clear? Information load right?
-
-OUTPUT — respond ONLY with a valid JSON object. No markdown fences, no preamble, no trailing text:
-{
-  "verdict": "Approved" | "Needs Revision" | "Major Revision Required",
-  "summary": "2–3 sentence overall honest assessment",
-  "whatWorks": ["specific strength 1", "specific strength 2"],
-  "priorityFixes": ["specific actionable fix 1", "specific actionable fix 2"],
-  "dimensions": [
-    {
-      "name": "dimension name",
-      "rating": "Strong" | "Acceptable" | "Needs Improvement",
-      "feedback": "Specific, educational, actionable feedback. Explain WHY something works or doesn't — the goal is to build design literacy."
-    }
-  ],
-  "strategicNotes": "A paragraph on strategic effectiveness for this specific medium and purpose."
-}
-
-VERDICT GUIDE:
-- "Approved": Ready for corporate design team. Only minor notes.
-- "Needs Revision": Meaningful issues to fix first; resubmit after revision.
-- "Major Revision Required": Significant brand, design, or strategic problems needing substantial rework.
-
-Be specific. Reference exact visual elements. Help the marketer understand WHY — not just that something is wrong.`;
-
 const CHANNELS = [
   { value: "social", label: "Social Media Post / Story" },
   { value: "print", label: "Print — Flyer, Postcard, Card" },
@@ -228,41 +127,53 @@ export default function DesignReviewTool() {
     if (!design) { setError("Please upload a design to review."); return; }
     setLoading(true); setError(""); setResult(null);
 
-    const channelLabel = CHANNELS.find(c => c.value === channel)?.label || channel;
-    const content = [
-      { type: "image", source: { type: "base64", media_type: mime(design), data: b64(design) } },
-      ...loImages.map(img => ({ type: "image", source: { type: "base64", media_type: mime(img), data: b64(img) } })),
-    ];
-
-    let prompt = `Review this ${channelLabel} design.`;
-    if (brandType === "lo") {
-      prompt += ` This uses a Loan Officer's personal brand — evaluate against good design principles and the LO's brand rather than strictly Movement brand standards. Still check for required compliance elements (EHO, NMLS logos) where applicable.`;
-      if (loNotes) prompt += ` LO brand guidance: ${loNotes}`;
-      if (loImages.length) prompt += ` ${loImages.length} LO brand reference image(s) also provided above.`;
-    } else {
-      prompt += ` This is a Movement Mortgage branded design — evaluate strictly against Movement brand standards.`;
-    }
-    if (extraNotes) prompt += ` Additional context: ${extraNotes}`;
-    prompt += ` Respond only with the JSON review object.`;
-    content.push({ type: "text", text: prompt });
-
+    let fullText = "";
     try {
       const res = await fetch("/.netlify/functions/anthropic-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: "user", content }],
+          designFile: {
+            type: "image",
+            mimeType: mime(design),
+            data: b64(design),
+          },
+          loReferenceImages: loImages.map(img => ({ mimeType: mime(img), data: b64(img) })),
+          channel,
+          brandType,
+          loNotes,
+          extraNotes,
         }),
       });
-      if (!res.ok) throw new Error("API error");
-      const data = await res.json();
-      const text = data.content?.map(b => b.text || "").join("").replace(/```json|```/g, "").trim();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error((errData.error?.message) || "API error");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const events = buf.split("\n\n");
+        buf = events.pop() ?? "";
+        for (const ev of events) {
+          const line = ev.split("\n").find(l => l.startsWith("data: "));
+          if (!line) continue;
+          const raw = line.slice(6);
+          if (raw === "[DONE]") continue;
+          try {
+            const obj = JSON.parse(raw);
+            if (obj.type === "content_block_delta" && obj.delta?.text) fullText += obj.delta.text;
+          } catch {}
+        }
+      }
+      const text = fullText.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(text);
       setResult(parsed);
 
+      const channelLabel = CHANNELS.find(c => c.value === channel)?.label || channel;
       const entry = {
         id: Date.now(),
         ts: new Date().toISOString(),
@@ -280,7 +191,8 @@ export default function DesignReviewTool() {
       setHistory(next);
       saveHistory(next);
     } catch {
-      setError("Review failed — please try again.");
+      const clean = fullText.replace(/```json|```/g, "").trim();
+      setError(clean && !clean.startsWith("{") ? clean : "Review failed — please try again.");
     } finally {
       setLoading(false);
     }
@@ -447,12 +359,6 @@ export default function DesignReviewTool() {
               />
             </div>
 
-            {error && (
-              <div style={{ background: "var(--color-background-danger)", border: "0.5px solid var(--color-border-danger)", borderRadius: "var(--border-radius-md)", padding: "10px 12px", fontSize: "13px", color: "var(--color-text-danger)" }}>
-                {error}
-              </div>
-            )}
-
             <button
               onClick={submit}
               disabled={loading || !design}
@@ -464,7 +370,13 @@ export default function DesignReviewTool() {
 
           {/* Right panel */}
           <div style={{ padding: "24px", overflowY: "auto" }}>
-            {!result && !loading && (
+            {error && (
+              <div style={{ maxWidth: "660px", background: "var(--color-background-danger)", border: "0.5px solid var(--color-border-danger)", borderRadius: "var(--border-radius-lg)", padding: "16px 20px", fontSize: "13px", color: "var(--color-text-danger)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                {error}
+              </div>
+            )}
+
+            {!result && !loading && !error && (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "10px", color: "var(--color-text-tertiary)" }}>
                 <i className="ti ti-layout-grid" style={{ fontSize: "32px" }} aria-hidden="true" />
                 <div style={{ fontSize: "14px" }}>Upload a design to begin</div>
